@@ -35,7 +35,7 @@ $COMMENT_RECEIVED = "comment_received.html";
 // The contents of the following file (relative to this PHP file) will be
 // displayed if the comment contains spam.  Customise it to your heart's
 // content.
-$COMMENT_CONTAINS_SPAM = "comment_contains_spam.html";
+//$COMMENT_CONTAINS_SPAM = "comment_contains_spam.html";
 
 // If the emails arrive in your client "garbled", you may need to change this
 // line to "\n" instead.
@@ -47,12 +47,6 @@ $HEADER_LINE_ENDING = "\r\n";
  ****************************************************************************/
 
 require_once 'mail.php';
-require_once 'spamfilter.php';
-
-function get_post_field($key, $defaultValue = "")
-{
-	return (isset($_POST[$key]) && !empty($_POST[$key])) ? $_POST[$key] : $defaultValue;
-}
 
 function get_post_data_as_yaml()
 {
@@ -75,31 +69,60 @@ function get_post_data_as_yaml()
 	return $yaml_data;
 }
 
-$COMMENTER_NAME = get_post_field('name', "Anonymous");
-$COMMENTER_EMAIL_ADDRESS = get_post_field('email', $EMAIL_ADDRESS);
-$COMMENTER_WEBSITE = get_post_field('link');
-$COMMENT_BODY = get_post_field('comment', "");
-$COMMENT_DATE = date($DATE_FORMAT);
-
-$POST_TITLE = get_post_field('post_title', "Unknown post");
-$POST_ID = get_post_field('post_id', "");
-unset($_POST['post_id']);
-
-
-$SPAM = spam_check_text($COMMENT_BODY);
-if (!empty($SPAM))
+function get_warnings_for($name, $email, $url)
 {
-	include $COMMENT_CONTAINS_SPAM;
-	die();
+	$warnings = '';
+	
+	// http://php.net/manual/en/filter.filters.validate.php
+	$name_is_a_url =			filter_var($name,   FILTER_VALIDATE_URL);
+	$name_is_an_email_address =	filter_var($name,   FILTER_VALIDATE_EMAIL);
+	$email_is_invalid =		!filter_var($email, FILTER_VALIDATE_EMAIL);
+	$url_is_invalid =		!filter_var($url,   FILTER_VALIDATE_URL);
+	
+	if (!$email_is_invalid) {
+		// TODO only retrieve $domain
+		list($user, $domain) =		explode('@', $email, 2);
+		$email_a_record_invalid =		!checkdnsrr($domain, 'A');
+		$mx_record_erroneous =		!checkdnsrr($domain, 'MX');
+	}
+	
+	if (!$url_is_invalid) {
+		list($protocol, $domain) =	explode('/', str_replace('//', '/', $url), 2);
+		$url_a_record_invalid =		!checkdnsrr($domain, 'A');
+	}
+	
+	$name_is_a_url ? 		$warnings .= "* Name is a URL.\n" : '';
+	$name_is_an_email_address ?	$warnings .= "* Name is an email address.\n" : '';
+	$email_is_invalid ?		$warnings .= "* Email address is invalid.\n" : '';
+	$email_a_record_invalid ?		$warnings .= "* Domain A record of email is invalid.\n" : '';
+	$mx_record_erroneous ?		$warnings .= "* Domain MX record of email is invalid\n" : '';
+	$url_is_invalid ?		$warnings .= "* Website URL is invalid.\n" : '';
+	$url_a_record_invalid ?		$warnings .= "* Domain A record of website URL is invalid.\n" : '';
+	
+	// This is of minor elegance and error prone, I know.
+	$warnings_count =		substr_count($warnings, "\n");
+	return strlen($warnings) > 0 ?	"\n$warnings_count WARNINGS:\n$warnings" : '';
 }
 
+$COMMENT_DATE =			date($DATE_FORMAT);
 
-$subject = "Comment from $COMMENTER_NAME on '$POST_TITLE'";
+$COMMENTER_NAME =		filter_input(INPUT_POST, 'name');
+$COMMENTER_EMAIL_ADDRESS =	filter_input(INPUT_POST, 'email');
+$COMMENTER_WEBSITE =		filter_input(INPUT_POST, 'link');
+$COMMENT_BODY =			filter_input(INPUT_POST, 'comment');
+
+$POST_TITLE =			filter_input(INPUT_POST, 'post_title');
+$POST_ID =			filter_input(INPUT_POST, 'post_id');
+unset($_POST['post_id']);
+
+$subject = "$COMMENTER_NAME on '$POST_TITLE'";
 
 $message = "$COMMENT_BODY\n\n";
 $message .= "----------------------\n";
 $message .= "$COMMENTER_NAME\n";
 $message .= "$COMMENTER_WEBSITE\n";
+
+$message .= get_warnings_for($COMMENTER_NAME, $COMMENTER_EMAIL_ADDRESS, $COMMENTER_WEBSITE);
 
 $mail = new Mail($subject, $message);
 $mail->set_from($EMAIL_ADDRESS, $COMMENTER_NAME);
