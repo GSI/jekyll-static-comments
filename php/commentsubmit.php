@@ -25,7 +25,7 @@ $DATE_FORMAT = "Y-m-d H:i";
 // the From: address.  Whilst you could, in theory, change this to take the
 // address out of the form, it's *incredibly* highly recommended you don't,
 // because that turns you into an open relay, and that's not cool.
-$EMAIL_ADDRESS = "blogger@example.com";
+$EMAIL_ADDRESS = "root";
 
 // The contents of the following file (relative to this PHP file) will be
 // displayed after the comment is received.  Customise it to your heart's
@@ -39,7 +39,7 @@ $COMMENT_RECEIVED = "comment_received.html";
 
 // If the emails arrive in your client "garbled", you may need to change this
 // line to "\n" instead.
-$HEADER_LINE_ENDING = "\r\n";
+$HEADER_LINE_ENDING = "\n";
 
 
 /****************************************************************************
@@ -69,6 +69,7 @@ function get_post_data_as_yaml()
 	return $yaml_data;
 }
 
+/* NOTE the checkdnsrr function seems to be unreliable */
 function get_warnings_for($name, $email, $url)
 {
 	$warnings = '';
@@ -78,30 +79,33 @@ function get_warnings_for($name, $email, $url)
 	$name_is_an_email_address =	filter_var($name,   FILTER_VALIDATE_EMAIL);
 	$email_is_invalid =		!filter_var($email, FILTER_VALIDATE_EMAIL);
 	$url_is_invalid =		!filter_var($url,   FILTER_VALIDATE_URL);
+	$url_a_record_invalid =		false;
+	$email_a_record_invalid =		false;
+	$email_mx_record_invalid =	false;
 	
 	if (!$email_is_invalid) {
 		// TODO only retrieve $domain
 		list($user, $domain) =		explode('@', $email, 2);
 		$email_a_record_invalid =		!checkdnsrr($domain, 'A');
-		$mx_record_erroneous =		!checkdnsrr($domain, 'MX');
+		$email_mx_record_invalid =	!checkdnsrr($domain, 'MX');
 	}
 	
 	if (!$url_is_invalid) {
-		list($protocol, $domain) =	explode('/', str_replace('//', '/', $url), 2);
+		list($protocol, $domain) =	explode('/', str_replace('//', '/', $url));
 		$url_a_record_invalid =		!checkdnsrr($domain, 'A');
 	}
 	
-	$name_is_a_url ? 		$warnings .= "* Name is a URL.\n" : '';
-	$name_is_an_email_address ?	$warnings .= "* Name is an email address.\n" : '';
-	$email_is_invalid ?		$warnings .= "* Email address is invalid.\n" : '';
-	$email_a_record_invalid ?		$warnings .= "* Domain A record of email is invalid.\n" : '';
-	$mx_record_erroneous ?		$warnings .= "* Domain MX record of email is invalid\n" : '';
-	$url_is_invalid ?		$warnings .= "* Website URL is invalid.\n" : '';
-	$url_a_record_invalid ?		$warnings .= "* Domain A record of website URL is invalid.\n" : '';
+	$name_is_a_url ? 		$warnings .= "* Name:    Is a URL\n" : '';
+	$name_is_an_email_address ?	$warnings .= "* Name:    Is an email address\n" : '';
+	$email_is_invalid ?		$warnings .= "* Email:   Invalid address\n" : '';
+	$email_a_record_invalid ?		$warnings .= "* Email:   Invalid Domain A record\n" : '';
+	$email_mx_record_invalid ?	$warnings .= "* Email:   Invalid Domain MX record\n" : '';
+	!empty($url) && $url_is_invalid ?	$warnings .= "* Website: Invalid URL\n" : '';
+	$url_a_record_invalid ?		$warnings .= "* Website: Invalid Domain A record\n" : '';
 	
 	// This is of minor elegance and error prone, I know.
 	$warnings_count =		substr_count($warnings, "\n");
-	return strlen($warnings) > 0 ?	"\n$warnings_count WARNINGS:\n$warnings" : '';
+	return strlen($warnings) > 0 ?	"\n$warnings_count WARNING/S:\n$warnings" : '';
 }
 
 $COMMENT_DATE =			date($DATE_FORMAT);
